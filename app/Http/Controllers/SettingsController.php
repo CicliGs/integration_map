@@ -1,0 +1,42 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\UpdateYandexSettingsRequest;
+use App\Services\SettingsService;
+use Illuminate\Http\JsonResponse;
+
+/**
+ * Yandex settings: API show/update.
+ */
+class SettingsController extends Controller
+{
+    /**
+     * @param  SettingsService  $settings  Settings service
+     */
+    public function __construct(
+        private SettingsService $settings
+    ) {}
+
+    /**
+     * Get Yandex settings (API).
+     */
+    public function show(): JsonResponse
+    {
+        return response()->json([
+            'yandex_reviews_url' => $this->settings->getYandexReviewsUrl(),
+        ]);
+    }
+
+    /**
+     * Update Yandex reviews URL (API).
+     */
+    public function update(UpdateYandexSettingsRequest $request): JsonResponse
+    {
+        return response()->json(
+            $this->settings->updateYandexReviewsUrl($request->validated('yandex_reviews_url'))
+        );
+    }
+}
