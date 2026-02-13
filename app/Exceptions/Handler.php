@@ -69,6 +69,10 @@ class Handler extends ExceptionHandler
      */
     protected function apiResponse(Request $request, Throwable $e): JsonResponse
     {
+        if (config('app.debug')) {
+            error_log((string) $e);
+        }
+
         if ($e instanceof ApiException) {
             return $this->jsonError(
                 $e->getMessage(),
