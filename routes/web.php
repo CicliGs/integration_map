@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api')->group(function () {
-    Route::get('/sanctum/csrf-cookie', CsrfCookieController::class)
+    Route::get('/sanctum/csrf-cookie', [CsrfCookieController::class, 'show'])
         ->name('api.sanctum');
 
     Route::post('/login', [AuthController::class, 'login'])
