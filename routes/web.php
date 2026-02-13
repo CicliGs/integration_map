@@ -8,6 +8,7 @@ use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\ResetPasswordController;
 use App\Http\Controllers\ReviewsController;
 use App\Http\Controllers\SettingsController;
+use Laravel\Sanctum\Http\Controllers\CsrfCookieController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -22,9 +23,8 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api')->group(function () {
-    Route::get('/sanctum/csrf-cookie', function () {
-        return response()->json(['message' => 'CSRF cookie set']);
-    })->name('api.sanctum');
+    Route::get('/sanctum/csrf-cookie', CsrfCookieController::class)
+        ->name('api.sanctum');
 
     Route::post('/login', [AuthController::class, 'login'])
         ->middleware('throttle:login')
