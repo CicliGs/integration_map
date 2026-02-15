@@ -29,13 +29,11 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $credentials = $request->validated();
-        $user = $this->auth->attempt($credentials, $request->boolean('remember'));
+        $user = $this->auth->login($credentials, $request->boolean('remember'), $request);
 
         if ($user === null) {
             throw new ApiException('Неверный email или пароль.', Response::HTTP_UNPROCESSABLE_ENTITY);
         }
-
-        $request->session()->regenerate();
 
         return response()->json(['user' => $user->toArray()]);
     }

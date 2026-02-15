@@ -5,35 +5,30 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ResetPasswordRequest;
+use App\Services\PasswordResetService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Str;
 
+/**
+ * Reset password (API). Delegates to PasswordResetService.
+ */
 class ResetPasswordController extends Controller
 {
+    public function __construct(
+        private PasswordResetService $password
+    ) {}
+
     /**
      * Reset the user's password.
      */
     public function __invoke(ResetPasswordRequest $request): JsonResponse
     {
-        $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
-            function ($user, $password) {
-                $user->forceFill([
-                    'password' => $password,
-                    'remember_token' => Str::random(60),
-                ])->save();
-            }
-        );
+        $status = $this->password->reset($request->only('email', 'password', 'password_confirmation', 'token'));
 
         if ($status !== Password::PASSWORD_RESET) {
-            return response()->json([
-                'message' => __('passwords.token'),
-            ], 422);
+            return response()->json(['message' => __('passwords.token')], 422);
         }
 
-        return response()->json([
-            'message' => __('passwords.reset'),
-        ]);
+        return response()->json(['message' => __('passwords.reset')]);
     }
 }

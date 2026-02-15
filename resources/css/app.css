@@ -747,6 +747,13 @@ a {
   line-height: 1.4;
 }
 
+.reviews__summary-notice {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
 .reviews__source {
   display: inline-flex;
   align-items: center;

@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateYandexSettingsRequest;
 use App\Services\SettingsService;
+use App\Services\YandexReviewsService;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -17,7 +18,8 @@ class SettingsController extends Controller
      * @param  SettingsService  $settings  Settings service
      */
     public function __construct(
-        private SettingsService $settings
+        private SettingsService $settings,
+        private YandexReviewsService $reviews
     ) {}
 
     /**
@@ -35,8 +37,10 @@ class SettingsController extends Controller
      */
     public function update(UpdateYandexSettingsRequest $request): JsonResponse
     {
-        return response()->json(
-            $this->settings->updateYandexReviewsUrl($request->validated('yandex_reviews_url'))
-        );
+        $url = $request->validated('yandex_reviews_url');
+        $result = $this->settings->updateYandexReviewsUrl($url);
+        $this->reviews->clearReviewsCache($url);
+
+        return response()->json($result);
     }
 }

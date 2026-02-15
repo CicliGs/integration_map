@@ -18,8 +18,14 @@ class YandexReviewsService
     /** Default number of reviews to fetch when limit is not specified. */
     public const DEFAULT_LIMIT = 10;
 
-    /** Max reviews to fetch for the app (all from the page / multiple pages). */
-    public const MAX_REVIEWS_LIMIT = 2000;
+    /** Max reviews to fetch for the app (aim for all from the place). */
+    public const MAX_REVIEWS_LIMIT = 15000;
+
+    /** Max number of Yandex "pages" to request when trying to get more reviews. */
+    private const MAX_PAGES_TO_FETCH = 150;
+
+    /** Cache TTL for full Yandex result (seconds). Same data for all pages and refreshes. */
+    private const CACHE_TTL_SECONDS = 900;
 
     /** Default items per page for paginated response. */
     public const DEFAULT_PER_PAGE = 50;
@@ -31,11 +37,13 @@ class YandexReviewsService
      * @param  ClientInterface  $client  HTTP client for fetching pages
      * @param  YandexPageParser  $parser  Parser for Yandex Maps HTML
      * @param  SettingRepositoryInterface  $settings  Repository for stored Yandex URL
+     * @param  ReviewsCacheService  $cache  Cache for full reviews result
      */
     public function __construct(
         private ClientInterface $client,
         private YandexPageParser $parser,
-        private SettingRepositoryInterface $settings
+        private SettingRepositoryInterface $settings,
+        private ReviewsCacheService $cache
     ) {}
 
     /**
@@ -63,6 +71,8 @@ class YandexReviewsService
 
     /**
      * Get reviews using the URL stored in settings.
+     * Result is cached so all requests (any page, refresh) see the same dataset and load fast.
+     * Tries multiple "pages" (URL + ?page=2, ?page=3, …) and merges unique reviews.
      *
      * @return array{company: array{name: mixed, rating: mixed, reviews_count: mixed, ratings_count: mixed}, reviews: array}
      */
@@ -73,10 +83,75 @@ class YandexReviewsService
             return $this->emptyResult();
         }
 
-        $data = $this->fetchReviews($url, $limit);
-        Log::debug('Yandex reviews parsed', $data);
+        $cacheKey = 'yandex_reviews_' . md5($url);
+
+        $data = $this->cache->get($cacheKey, function () use ($url, $limit) {
+            $result = $this->fetchReviewsAllPages($url, $limit);
+            Log::debug('Yandex reviews fetched and cached', ['reviews_count' => count($result['reviews'] ?? [])]);
+            return $result;
+        }, self::CACHE_TTL_SECONDS);
 
         return $data;
+    }
+
+    /**
+     * Clear cached reviews for a URL (e.g. after user changes the link in settings).
+     */
+    public function clearReviewsCache(string $url): void
+    {
+        $this->cache->forget('yandex_reviews_' . md5($url));
+    }
+
+    /**
+     * Fetch reviews from base URL and optional ?page=2, ?page=3, …; merge and dedupe.
+     *
+     * @return array{company: array{name: mixed, rating: mixed, reviews_count: mixed, ratings_count: mixed}, reviews: array}
+     */
+    private function fetchReviewsAllPages(string $baseUrl, int $limit): array
+    {
+        $company = null;
+        $seen = [];
+        $allReviews = [];
+        $separator = str_contains($baseUrl, '?') ? '&' : '?';
+
+        for ($page = 1; $page <= self::MAX_PAGES_TO_FETCH; $page++) {
+            $url = $page === 1 ? $baseUrl : $baseUrl . $separator . 'page=' . $page;
+            $data = $this->fetchReviews($url, $limit);
+
+            if ($company === null && ! empty($data['company'])) {
+                $company = $data['company'];
+            }
+            if (empty($data['company']['name']) && $baseUrl !== '') {
+                $data['company']['name'] = $this->companyNameFromUrl($baseUrl);
+            }
+            if ($company === null) {
+                $company = $data['company'] ?? $this->emptyCompany();
+            }
+
+            $newCount = 0;
+            foreach ($data['reviews'] ?? [] as $review) {
+                $key = ($review['author'] ?? '') . '|' . ($review['date'] ?? '') . '|' . ($review['text'] ?? '');
+                if (! isset($seen[$key])) {
+                    $seen[$key] = true;
+                    $allReviews[] = $review;
+                    $newCount++;
+                }
+            }
+
+            if ($newCount === 0 || count($allReviews) >= $limit) {
+                break;
+            }
+        }
+
+        $reviews = array_slice($allReviews, 0, $limit);
+        foreach ($reviews as $i => $review) {
+            $reviews[$i]['id'] = $i;
+        }
+
+        return [
+            'company' => $company ?? $this->emptyCompany(),
+            'reviews' => $reviews,
+        ];
     }
 
     /**

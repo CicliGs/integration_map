@@ -133,6 +133,11 @@
                     <p class="reviews__summary-total">
                         Всего отзывов: {{ formatReviewsCount() }}
                     </p>
+                    <p
+                        v-if="company && company.reviews_count != null && meta.total < company.reviews_count"
+                        class="reviews__summary-notice"
+                    >
+                    </p>
                 </aside>
             </div>
         </div>
