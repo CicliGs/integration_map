@@ -73,6 +73,47 @@
                                 </div>
                             </article>
                         </div>
+
+                        <div v-if="meta.last_page > 1" class="reviews__pagination">
+                            <p class="reviews__pagination-info">
+                                Показано {{ rangeFrom }}–{{ rangeTo }} из {{ meta.total }}
+                            </p>
+                            <nav class="reviews__pagination-nav" aria-label="Страницы отзывов">
+                                <button
+                                    type="button"
+                                    class="reviews__pagination-btn"
+                                    :disabled="meta.current_page <= 1"
+                                    aria-label="Предыдущая страница"
+                                    @click="goToPage(meta.current_page - 1)"
+                                >
+                                    Назад
+                                </button>
+                                <span class="reviews__pagination-pages">
+                                    <template v-for="p in visiblePages" :key="p">
+                                        <button
+                                            v-if="p !== '…'"
+                                            type="button"
+                                            class="reviews__pagination-btn reviews__pagination-btn--num"
+                                            :class="{ 'reviews__pagination-btn--current': p === meta.current_page }"
+                                            :aria-current="p === meta.current_page ? 'page' : undefined"
+                                            @click="goToPage(p)"
+                                        >
+                                            {{ p }}
+                                        </button>
+                                        <span v-else class="reviews__pagination-ellipsis">…</span>
+                                    </template>
+                                </span>
+                                <button
+                                    type="button"
+                                    class="reviews__pagination-btn"
+                                    :disabled="meta.current_page >= meta.last_page"
+                                    aria-label="Следующая страница"
+                                    @click="goToPage(meta.current_page + 1)"
+                                >
+                                    Вперёд
+                                </button>
+                            </nav>
+                        </div>
                     </div>
                 </div>
 
@@ -101,32 +142,84 @@
 import { computed, onMounted, ref } from 'vue';
 import api from '@/api/client';
 
+const PER_PAGE = 50;
+
 const company = ref(null);
 const reviews = ref([]);
 const loading = ref(false);
 const error = ref('');
+const meta = ref({
+    total: 0,
+    per_page: PER_PAGE,
+    current_page: 1,
+    last_page: 1,
+});
 
 const hasData = computed(() =>
     Boolean(company.value?.name) || (Array.isArray(reviews.value) && reviews.value.length > 0)
 );
 
-const load = async () => {
+const rangeFrom = computed(() => {
+    const m = meta.value;
+    if (m.total === 0) return 0;
+    return (m.current_page - 1) * m.per_page + 1;
+});
+
+const rangeTo = computed(() => {
+    const m = meta.value;
+    if (m.total === 0) return 0;
+    return Math.min(m.current_page * m.per_page, m.total);
+});
+
+const visiblePages = computed(() => {
+    const cur = meta.value.current_page;
+    const last = meta.value.last_page;
+    if (last <= 7) {
+        return Array.from({ length: last }, (_, i) => i + 1);
+    }
+    const pages = [];
+    if (cur <= 4) {
+        for (let i = 1; i <= 5; i++) pages.push(i);
+        pages.push('…');
+        pages.push(last);
+    } else if (cur >= last - 3) {
+        pages.push(1);
+        pages.push('…');
+        for (let i = last - 4; i <= last; i++) pages.push(i);
+    } else {
+        pages.push(1);
+        pages.push('…');
+        for (let i = cur - 1; i <= cur + 1; i++) pages.push(i);
+        pages.push('…');
+        pages.push(last);
+    }
+    return pages;
+});
+
+const load = async (page = 1) => {
     loading.value = true;
     error.value = '';
 
     try {
-        const response = await api.get('/reviews');
+        const response = await api.get('/reviews', {
+            params: { page, per_page: PER_PAGE },
+        });
         company.value = response.data.company ?? {
             name: null,
             rating: null,
             reviews_count: null,
             ratings_count: null,
         };
+        meta.value = response.data.meta ?? {
+            total: 0,
+            per_page: PER_PAGE,
+            current_page: 1,
+            last_page: 1,
+        };
         const raw = response.data.reviews || [];
 
         const seen = new Set();
         const unique = [];
-
         for (const item of raw) {
             const key = [item.author || '', item.date || '', item.text || ''].join('|');
             if (!seen.has(key)) {
@@ -134,23 +227,27 @@ const load = async () => {
                 unique.push(item);
             }
         }
-
         reviews.value = unique;
     } catch (err) {
         error.value = err.response?.status === 401
             ? 'Войдите в аккаунт для просмотра отзывов.'
             : 'Не удалось загрузить отзывы.';
         company.value = { name: null, rating: null, reviews_count: null, ratings_count: null };
+        meta.value = { total: 0, per_page: PER_PAGE, current_page: 1, last_page: 1 };
     } finally {
         loading.value = false;
     }
 };
 
-onMounted(load);
+const goToPage = (page) => {
+    if (page < 1 || page > meta.value.last_page) return;
+    load(page);
+};
+
+onMounted(() => load(1));
 
 const getReviewRating = (review) => (review && review.rating) ? review.rating : null;
 
-/** Звезда с индексом index (1..5) заполнена при рейтинге rating (0..5). */
 const starFilled = (rating, index) => {
     if (rating == null) return false;
     const num = Number(rating);

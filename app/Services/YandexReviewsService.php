@@ -18,8 +18,14 @@ class YandexReviewsService
     /** Default number of reviews to fetch when limit is not specified. */
     public const DEFAULT_LIMIT = 10;
 
-    /** Max reviews to fetch for the app (show all from the page). */
-    public const MAX_REVIEWS_LIMIT = 500;
+    /** Max reviews to fetch for the app (all from the page / multiple pages). */
+    public const MAX_REVIEWS_LIMIT = 2000;
+
+    /** Default items per page for paginated response. */
+    public const DEFAULT_PER_PAGE = 50;
+
+    /** Maximum allowed per_page for paginated response. */
+    public const MAX_PER_PAGE = 100;
 
     /**
      * @param  ClientInterface  $client  HTTP client for fetching pages
@@ -71,6 +77,65 @@ class YandexReviewsService
         Log::debug('Yandex reviews parsed', $data);
 
         return $data;
+    }
+
+    /**
+     * Get paginated reviews for the app (URL from settings).
+     *
+     * @param  int  $page  Page number (1-based), clamped to valid range
+     * @param  int  $perPage  Items per page (clamped to 1..MAX_PER_PAGE)
+     * @return array{company: array, reviews: array, meta: array{total: int, per_page: int, current_page: int, last_page: int}}
+     */
+    public function getReviewsForAppPaginated(int $page = 1, int $perPage = self::DEFAULT_PER_PAGE): array
+    {
+        $perPage = $this->clampPerPage($perPage);
+        $data = $this->getReviewsForApp(self::MAX_REVIEWS_LIMIT);
+        $allReviews = $data['reviews'] ?? [];
+        $total = count($allReviews);
+        $lastPage = $total > 0 ? (int) ceil($total / $perPage) : 1;
+        $page = max(1, min($page, $lastPage));
+        $offset = ($page - 1) * $perPage;
+        $reviews = array_slice($allReviews, $offset, $perPage);
+
+        return [
+            'company' => $data['company'] ?? $this->emptyCompany(),
+            'reviews' => $reviews,
+            'meta' => [
+                'total' => $total,
+                'per_page' => $perPage,
+                'current_page' => $page,
+                'last_page' => $lastPage,
+            ],
+        ];
+    }
+
+    /**
+     * Clamp per_page to allowed range.
+     */
+    private function clampPerPage(int $value): int
+    {
+        if ($value < 1) {
+            return self::DEFAULT_PER_PAGE;
+        }
+        if ($value > self::MAX_PER_PAGE) {
+            return self::MAX_PER_PAGE;
+        }
+        return $value;
+    }
+
+    /**
+     * Empty company structure for API response.
+     *
+     * @return array{name: null, rating: null, reviews_count: null, ratings_count: null}
+     */
+    private function emptyCompany(): array
+    {
+        return [
+            'name' => null,
+            'rating' => null,
+            'reviews_count' => null,
+            'ratings_count' => null,
+        ];
     }
 
     /**
